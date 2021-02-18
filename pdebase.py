@@ -248,7 +248,7 @@ class PDEBase:
     Moves the state of `self` (PDEBase) to a time step counter corresponding to `target_step`
     via a checkpoint file.
 
-    Essentially this loads the nearest checkpoint file via `PDEBase.load_nearest_checkpoint()` 
+    Essentially this loads the nearest checkpoint file via `PDEBase.load_nearest_checkpoint()`
     and then calls `PDEBase.step()` an appropriate number of times in order that the state of
     `self` (PDEBase) is consistent with the time step index equal to `target_step`.
     """
@@ -269,9 +269,9 @@ class PDEBase:
 
 
 
-def PDEBaseLoadFromFile(filename):
+def PDEBaseLoadCheckpointFile(filename):
   """
-  Helper method to load a checkpoint file
+  Helper method to load a checkpoint file.
   """
   pde = PDEBase('empty', ['p'], [0])
   pde_from_file = pde.load(filename)
@@ -450,7 +450,7 @@ def example_shell_restart_from_file():
   pde = pde_restart
 
   # Option 2
-  pde = PDEBaseLoadFromFile(chkpoint_filename)
+  pde = PDEBaseLoadCheckpointFile(chkpoint_filename)
 
   print('Simulation restarted')
   print(pde)
