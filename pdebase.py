@@ -109,17 +109,59 @@ class PDEBase:
     """
     filename = self.create_output_name(step=n)
     print('loading file:', filename)
-    v = np.loadtxt(filename)
+    try:
+      v = np.loadtxt(filename)
+    except:
+      v = None
     return v
   
   
+  def dump(self):
+    """
+    Dump the full state of PDBase to binary using pickle.
+    """
+    import pickle as pkl
+    
+    filename = self.create_output_name(step=self.time_step_count)
+    filename = filename.replace('.bin','.pkl')
+    file = open(filename, "wb")
+    pkl.dump(self, file)
+    file.close()
+
+
+  def load(self, fname):
+    """
+    Create a PDBase object from a binary file.
+    The file should be created using PDEBase.dump().
+    
+    Output
+      pde: The object loaded from file.
+    """
+    import pickle as pkl
+    file = open(fname, "rb")
+    pde = pkl.load(file)
+    file.close()
+    return pde
+  
+
   def write_checkpoint(self):
     """
     Write a solution vector to file and cache step index and time values.
     """
     self.write_solution()
-    self.checkpoints.append( (self.time_step_count, self.time) ) # (step_counter, time)
+
+    # If the checkpoint list is empty, insert value
+    # If it's not empty, check the current step is larger than the last value in self.checkpoints
+    # This will ensure that the in-memory record is monotonically increasing
+    if len(self.checkpoints) != 0:
+      last, last_time = self.checkpoints[-1]
+      if self.time_step_count > last:
+        self.checkpoints.append( (self.time_step_count, self.time) ) # (step_counter, time)
+    else:
+      self.checkpoints.append( (self.time_step_count, self.time) ) # (step_counter, time)
   
+    self.dump()
+
   
   def step(self):
     """
@@ -129,7 +171,7 @@ class PDEBase:
     (iii) Increments the value of time.
     By default, the initial condition (solution vector associated with time step index = 0), will be checkpointed.
     
-    The method `step()` will attempt to call a user call-back `self.advance()` to perform the numerical
+    The method `step()` will attempt to call a user call-back `PDEBase.advance()` to perform the numerical
     operations required to update the discrete solution of the PDE.
     
     The call-back should have the signature
@@ -164,7 +206,7 @@ class PDEBase:
     to obtain a solution at target_step we search for a checkpoint file associated 
     with a previously computed time step index which is less than or equal to `target_step`.
 
-    This function does not modify the state of `self`, that is, neither the time step counter,
+    This function does not modify the state of `self` (PDEBase), that is, neither the time step counter,
     the value of time or the solution vector `phi` are modified.
 
     If a valid checkpoint files cannot be found, None is returned for `v`, `step_i` and `step_t`.
@@ -201,14 +243,14 @@ class PDEBase:
     return v, step_i, step_t
 
 
-  def restart_from(self, target_step):
+  def rollback_to(self, target_step):
     """
-    Moves the state of `self` to a time step counter corresponding to `target_step`
-    via checkpoint files.
+    Moves the state of `self` (PDEBase) to a time step counter corresponding to `target_step`
+    via a checkpoint file.
 
-    Essentially this loads the nearest checkpoint file via `load_nearest_checkpoint()` 
-    and then calls `step()` an appropriate number of times in order that the state of 
-    `self` is consistent with the time step index equal to `target_step`.
+    Essentially this loads the nearest checkpoint file via `PDEBase.load_nearest_checkpoint()` 
+    and then calls `PDEBase.step()` an appropriate number of times in order that the state of
+    `self` (PDEBase) is consistent with the time step index equal to `target_step`.
     """
     x, i, t = self.load_nearest_checkpoint(target_step)
     if i is None:
@@ -224,6 +266,16 @@ class PDEBase:
     for k in range(i+1,target_step+1):
       print('[restart] updating to target - performing additional step', k)
       self.step()
+
+
+
+def PDEBaseLoadFromFile(filename):
+  """
+  Helper method to load a checkpoint file
+  """
+  pde = PDEBase('empty', ['p'], [0])
+  pde_from_file = pde.load(filename)
+  return pde_from_file
 
 
 def example_base_class():
@@ -246,8 +298,13 @@ def example_base_class():
   print(pde)
 
   print('-- restart from checkpoint --')
-  pde.restart_from(8)
+  pde.rollback_to(8)
   print(pde)
+
+  pde.dump()
+
+  pde2 = pde.load("base-ex1_kappa1.0_g33.3_step9.pkl")
+  print(pde2)
 
 
 class ShellFD(PDEBase):
@@ -309,7 +366,7 @@ class ShellFD(PDEBase):
     return phi
 
 
-def example_shell():
+def example_shell_rollback():
   # Instantiate ShellFD with: 12 grid points, a = 0 and checkpoint frequency of 2
   pde = ShellFD(12, 0, chp_freq = 2)
   print(pde)
@@ -349,7 +406,7 @@ def example_shell():
   # Resest the state of pde to that corresponding to step = 3.
   # This will be peformed by loading the checkpoint file from step = 2,
   # and then advance by a single call to step().
-  pde.restart_from(3)
+  pde.rollback_to(3)
   
   # Get the solution, print to screen, compare with value of u from step 3 printed above
   u1 = pde.get_solution()
@@ -359,9 +416,57 @@ def example_shell():
   u1 = pde.step()
   print('step',pde.time_step_count,u1)
 
+  pde2 = pde.load("ShellFD_a0_step4.pkl")
+  print(pde2)
+
+def example_shell_restart_from_file():
+  # Instantiate ShellFD with: 12 grid points, a = 0 and checkpoint frequency of 2
+  pde = ShellFD(12, 0, chp_freq = 2)
+  print(pde)
+  
+  # Define IC, using the coordinates
+  x = pde.get_grid()
+  u = pde.get_solution()
+  u[:] = 3.3 * x[:,0]**2 + 2.0
+  
+  # Print time step and u associated with the IC
+  print('step',pde.time_step_count,u)
+  
+  # Perform a few time steps, printing values of u to the screen
+  for i in range(14):
+    u1 = pde.step()
+    print('step',pde.time_step_count,u1)
+
+  print('Simulation finished')
+  print(pde)
+
+
+  chkpoint_filename = pde.create_output_name(step=8)
+  chkpoint_filename = chkpoint_filename.replace(".bin",".pkl")
+
+  # Option 1
+  pde_restart = pde.load(chkpoint_filename)
+  pde = None
+  pde = pde_restart
+
+  # Option 2
+  pde = PDEBaseLoadFromFile(chkpoint_filename)
+
+  print('Simulation restarted')
+  print(pde)
+
+
+  for i in range(6):
+    u1 = pde.step()
+    print('step',pde.time_step_count,u1)
+
+  print('Simulation finished')
+  print(pde)
+
 
 if __name__ == '__main__':
-  #example_base_class()
-  example_shell()
+  example_base_class()
+  #example_shell_rollback()
+  example_shell_restart_from_file()
 
 
