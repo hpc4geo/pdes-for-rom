@@ -15,7 +15,12 @@ class PDEBase:
       checkpoint_frequency: How often a checkpoint file should be emitted during time-stepping.
     """
     self.model_name = name
-    
+
+    if not isinstance(parameter_names, list):
+      parameter_names = [parameter_names]
+    if not isinstance(parameter_vals, list):
+      parameter_vals = [parameter_vals]
+
     if len(parameter_names) != len(parameter_vals):
       raise RuntimeError('len(parameter_names) does not equal len(parameter_vals)')
     # Create a dict using keys from parameter_names[] and values from parameter_vals[]
@@ -41,6 +46,8 @@ class PDEBase:
       # Concatenate strings, placing an underscore between them.
       p = list()
       for k in self.parameter:
+        if k is None:
+          break
         p.append(k + str(self.parameter[k]))
       name = "_".join(p)
       return name
@@ -307,6 +314,11 @@ def example_base_class():
   print(pde2)
 
 
+def example_base_class_none():
+  pde = PDEBase('EmptyParameterPDE_Demo', None, None)
+  print('fname:', pde.create_output_name(step=3))
+
+
 class ShellFD(PDEBase):
   """
   A shell class which inherits from PDEBase.
@@ -466,7 +478,10 @@ def example_shell_restart_from_file():
 
 if __name__ == '__main__':
   example_base_class()
+  example_base_class_none()
   #example_shell_rollback()
   example_shell_restart_from_file()
+
+
 
 
